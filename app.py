@@ -1,122 +1,118 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
 from datetime import date
 
-# --- CONFIGURATION STYLE FOODVISOR ---
-st.set_page_config(page_title="Gemini-Visor Pro", page_icon="🥗", layout="centered")
+# --- CONFIGURATION STYLE ÉLITE ---
+st.set_page_config(page_title="MyFoodvisor Pro", page_icon="🍏", layout="centered")
 
-# Injection de CSS pour le look "App Mobile"
+# CSS pour simuler une application mobile moderne
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
+    .main { background-color: #F7F8FA; }
+    .stApp { max-width: 450px; margin: 0 auto; border-radius: 30px; }
+    .macro-container {
+        background: white; padding: 15px; border-radius: 20px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 10px;
+    }
+    .stat-label { font-size: 0.8rem; color: #8E8E93; font-weight: 600; }
+    .stat-value { font-size: 1.1rem; font-weight: 700; color: #1C1C1E; }
+    .stProgress > div > div > div > div { background-color: #2DCC70; }
+    /* Style Bouton Foodvisor */
     .stButton>button {
-        width: 100%;
-        border-radius: 20px;
-        background-color: #4CAF50;
-        color: white;
-        border: none;
-        height: 3em;
-        font-weight: bold;
+        border-radius: 25px; background: #2DCC70; border: none;
+        color: white; font-weight: 700; width: 100%; height: 50px;
+        transition: 0.3s;
     }
-    .metric-card {
-        background-color: white;
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        text-align: center;
-    }
-    .stTextInput>div>div>input { border-radius: 15px; }
-    div[data-testid="stMetricValue"] { color: #4CAF50; font-size: 1.8rem; }
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    .stTabs [data-baseweb="tab"] {
-        background-color: #ffffff;
-        border-radius: 10px 10px 0px 0px;
-        padding: 10px 20px;
-    }
+    .stButton>button:hover { background: #27ae60; transform: scale(1.02); }
     </style>
     """, unsafe_allow_html=True)
 
 # --- INITIALISATION ---
 if 'historique_repas' not in st.session_state:
-    st.session_state.historique_repas = pd.DataFrame(columns=["Date", "Aliment", "Calories", "Protéines", "Glucides", "Lipides"])
+    st.session_state.historique_repas = pd.DataFrame(columns=["Date", "Aliment", "Calories", "P", "G", "L", "Fi"])
 
-# --- HEADER TYPE APP ---
-st.markdown("<h1 style='text-align: center; color: #2E7D32;'>🥗 Mon Foodvisor</h1>", unsafe_allow_html=True)
+# --- CALCUL DES OBJECTIFS MUSCULATION ---
+st.sidebar.markdown("### ⚙️ Coach Personnel")
+poids = st.sidebar.number_input("Poids (kg)", 40, 150, 75)
+objectif = st.sidebar.select_slider("Objectif", options=["Sèche Extreme", "Sèche", "Maintenance", "Prise de Masse", "Prise de Masse Pro"])
 
-# --- CALCUL DES OBJECTIFS ---
-poids = st.sidebar.slider("Poids actuel (kg)", 40, 150, 75)
-objectif = st.sidebar.selectbox("Mon Objectif", ["Prise de masse", "Sèche", "Maintenance"])
+# Logique de nutrition sportive (Protéines élevées pour le muscle)
+multiplicateurs = {
+    "Sèche Extreme": {"cal": 24, "p": 2.6, "l": 0.7, "fi": 0.5},
+    "Sèche": {"cal": 27, "p": 2.4, "l": 0.8, "fi": 0.5},
+    "Maintenance": {"cal": 32, "p": 2.0, "l": 0.9, "fi": 0.4},
+    "Prise de Masse": {"cal": 37, "p": 2.1, "l": 1.0, "fi": 0.4},
+    "Prise de Masse Pro": {"cal": 42, "p": 2.2, "l": 1.1, "fi": 0.4}
+}
 
-if objectif == "Prise de masse":
-    c_cal, c_prot, color = int(poids * 38), int(poids * 2.2), "#2196F3"
-elif objectif == "Sèche":
-    c_cal, c_prot, color = int(poids * 25), int(poids * 2.4), "#FF9800"
-else:
-    c_cal, c_prot, color = int(poids * 30), int(poids * 2.0), "#4CAF50"
+m = multiplicateurs[objectif]
+c_cal = int(poids * m['cal'])
+c_p, c_l, c_fi = int(poids * m['p']), int(poids * m['l']), int(poids * m['fi'])
+c_g = int((c_cal - (c_p * 4) - (c_l * 9)) / 4)
 
-# --- DASHBOARD PRINCIPAL ---
-df_repas = st.session_state.historique_repas
-df_repas['Date'] = pd.to_datetime(df_repas['Date']).dt.date
-df_jour = df_repas[df_repas['Date'] == date.today()]
+# --- DASHBOARD VISUEL ---
+df_jour = st.session_state.historique_repas[st.session_state.historique_repas['Date'] == date.today()]
+tot_c, tot_p, tot_g, tot_l, tot_f = df_jour['Calories'].sum(), df_jour['P'].sum(), df_jour['G'].sum(), df_jour['L'].sum(), df_jour['Fi'].sum()
 
-tot_cal = df_jour['Calories'].sum()
-tot_prot = df_jour['Protéines'].sum()
+# Anneau de Calories central
+fig = go.Figure(go.Pie(
+    values=[tot_c, max(0, c_cal - tot_c)], hole=.85,
+    marker_colors=['#2DCC70', '#E5E5EA'], showlegend=False, hoverinfo='none'
+))
+fig.update_layout(
+    annotations=[dict(text=f'<b>{int(tot_c)}</b><br><span style="font-size:12px; color:gray;">kcal / {c_cal}</span>', 
+                 x=0.5, y=0.5, font_size=28, showarrow=False)],
+    margin=dict(t=10, b=10, l=10, r=10), height=220
+)
+st.plotly_chart(fig, use_container_width=True)
 
-# Cercles de progression (Layout interactif)
+# Grille des Macronutriments (Design Cards)
 col1, col2 = st.columns(2)
-with col1:
-    st.metric("Énergie (kcal)", f"{int(tot_cal)}", f"{int(c_cal - tot_cal)} restant")
-    st.progress(min(tot_cal / c_cal, 1.0))
-with col2:
-    st.metric("Protéines (g)", f"{tot_prot:.1f}g", f"{int(c_prot - tot_prot)}g restant")
-    st.progress(min(tot_prot / c_prot, 1.0))
+col3, col4 = st.columns(2)
 
-st.divider()
+def draw_card(col, label, current, target, unit="g"):
+    percent = min(current/target, 1.0) if target > 0 else 0
+    with col:
+        st.markdown(f"""
+        <div class="macro-container">
+            <div class="stat-label">{label.upper()}</div>
+            <div class="stat-value">{int(current)}{unit} <span style="font-size:0.7rem; color:gray;">/ {target}{unit}</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.progress(percent)
 
-# --- NAVIGATION ---
-tab1, tab2, tab3 = st.tabs(["⚡ Magic Paste", "📊 Historique", "⚖️ Poids"])
+draw_card(col1, "Protéines 🥩", tot_p, c_p)
+draw_card(col2, "Glucides 🍝", tot_g, c_g)
+draw_card(col3, "Lipides 🥑", tot_l, c_l)
+draw_card(col4, "Fibres 🥬", tot_f, c_fi)
 
-with tab1:
-    st.markdown("### 🪄 Ajouter un repas")
-    magic_input = st.text_input("", placeholder="Colle la ligne de Gemini ici...")
-    
-    if st.button("Ajouter au journal"):
-        if magic_input:
+st.markdown("---")
+
+# --- ACTIONS ---
+tab_add, tab_history = st.tabs(["➕ Ajouter", "📜 Journal"])
+
+with tab_add:
+    st.markdown("### 🪄 Magic Scan Gemini")
+    magic = st.text_input("", placeholder="Aliment | Cal | P | G | L | Fibres")
+    if st.button("Synchroniser le repas"):
+        if magic:
             try:
-                parts = magic_input.split("|")
-                new_row = pd.DataFrame([{
-                    "Date": date.today(),
-                    "Aliment": parts[0].strip(),
-                    "Calories": float(parts[1]),
-                    "Protéines": float(parts[2]),
-                    "Glucides": float(parts[3]),
-                    "Lipides": float(parts[4])
-                }])
+                p = [i.strip() for i in magic.split("|")]
+                new_row = pd.DataFrame([{"Date": date.today(), "Aliment": p[0], "Calories": float(p[1]), "P": float(p[2]), "G": float(p[3]), "L": float(p[4]), "Fi": float(p[5])}])
                 st.session_state.historique_repas = pd.concat([st.session_state.historique_repas, new_row], ignore_index=True)
-                st.balloons() # Petit effet de fête !
+                st.success("C'est dans la boîte !")
                 st.rerun()
             except:
-                st.error("Oups ! Le format n'est pas bon.")
+                st.error("Format requis : Nom | Cal | P | G | L | Fi")
 
-    # Liste des repas du jour avec style
+with tab_history:
+    if df_jour.empty:
+        st.info("Aucun repas aujourd'hui.")
     for i, row in df_jour.iterrows():
-        with st.container():
-            st.markdown(f"""
-            <div style="background-color: white; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid {color};">
-                <span style="float: right; font-weight: bold;">{row['Calories']} kcal</span>
-                <div style="font-weight: bold;">{row['Aliment']}</div>
-                <div style="font-size: 0.8rem; color: gray;">P: {row['Protéines']}g | G: {row['Glucides']}g | L: {row['Lipides']}g</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-with tab2:
-    st.subheader("Ta semaine en un coup d'œil")
-    if not df_repas.empty:
-        fig = px.bar(df_repas.groupby("Date")["Calories"].sum().reset_index(), 
-                     x="Date", y="Calories", color_discrete_sequence=[color])
-        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig, use_container_width=True)
-
-with tab3:
-    st.info("Cette section est prête pour tes imports CSV Santé !")
+        st.markdown(f"""
+        <div style="background:white; border-radius:15px; padding:15px; margin-bottom:10px; border-left: 4px solid #2DCC70;">
+            <b>{row['Aliment']}</b> <span style="float:right; color:#2DCC70;">{int(row['Calories'])} kcal</span><br>
+            <small style="color:gray;">P: {row['P']}g · G: {row['G']}g · L: {row['L']}g · F: {row['Fi']}g</small>
+        </div>
+        """, unsafe_allow_html=True)
