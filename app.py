@@ -3,116 +3,121 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import date
 
-# --- CONFIGURATION STYLE ÉLITE ---
-st.set_page_config(page_title="MyFoodvisor Pro", page_icon="🍏", layout="centered")
+# --- CONFIGURATION DU DESIGN ---
+st.set_page_config(page_title="NutriTrack Pro", page_icon="🍎", layout="centered")
 
-# CSS pour simuler une application mobile moderne
 st.markdown("""
     <style>
-    .main { background-color: #F7F8FA; }
-    .stApp { max-width: 450px; margin: 0 auto; border-radius: 30px; }
-    .macro-container {
-        background: white; padding: 15px; border-radius: 20px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 10px;
+    /* Global Style */
+    .main { background-color: #F2F2F7; }
+    .stApp { max-width: 480px; margin: 0 auto; background-color: #F2F2F7; }
+    
+    /* Cards Style */
+    .meal-card {
+        background: white; border-radius: 20px; padding: 15px; margin-bottom: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #E5E5EA;
     }
-    .stat-label { font-size: 0.8rem; color: #8E8E93; font-weight: 600; }
-    .stat-value { font-size: 1.1rem; font-weight: 700; color: #1C1C1E; }
-    .stProgress > div > div > div > div { background-color: #2DCC70; }
-    /* Style Bouton Foodvisor */
-    .stButton>button {
-        border-radius: 25px; background: #2DCC70; border: none;
-        color: white; font-weight: 700; width: 100%; height: 50px;
-        transition: 0.3s;
+    .macro-tag {
+        font-size: 0.75rem; color: #8E8E93; margin-right: 8px;
     }
-    .stButton>button:hover { background: #27ae60; transform: scale(1.02); }
+    
+    /* Bottom Nav */
+    .nav-bar {
+        position: fixed; bottom: 0; left: 0; width: 100%; background: white;
+        display: flex; justify-content: space-around; padding: 10px;
+        border-top: 1px solid #E5E5EA; z-index: 1000;
+    }
+    
+    /* Progress Bars */
+    .stProgress > div > div > div > div { background-image: linear-gradient(to right, #FF9500, #FFCC00); }
     </style>
     """, unsafe_allow_html=True)
 
-# --- INITIALISATION ---
-if 'historique_repas' not in st.session_state:
-    st.session_state.historique_repas = pd.DataFrame(columns=["Date", "Aliment", "Calories", "P", "G", "L", "Fi"])
+# --- LOGIQUE DE CALCUL ---
+if 'db' not in st.session_state:
+    st.session_state.db = pd.DataFrame(columns=["Date", "Repas", "Nom", "Cal", "P", "G", "L", "Fi"])
 
-# --- CALCUL DES OBJECTIFS MUSCULATION ---
-st.sidebar.markdown("### ⚙️ Coach Personnel")
-poids = st.sidebar.number_input("Poids (kg)", 40, 150, 75)
-objectif = st.sidebar.select_slider("Objectif", options=["Sèche Extreme", "Sèche", "Maintenance", "Prise de Masse", "Prise de Masse Pro"])
+# Sidebar pour le profil (comme dans l'onglet Profil de la vidéo)
+st.sidebar.header("👤 Mon Profil")
+poids = st.sidebar.number_input("Poids actuel (kg)", 40.0, 150.0, 80.0)
+obj_type = st.sidebar.selectbox("Objectif", ["Prise de muscle", "Perte de graisse", "Maintien"])
 
-# Logique de nutrition sportive (Protéines élevées pour le muscle)
-multiplicateurs = {
-    "Sèche Extreme": {"cal": 24, "p": 2.6, "l": 0.7, "fi": 0.5},
-    "Sèche": {"cal": 27, "p": 2.4, "l": 0.8, "fi": 0.5},
-    "Maintenance": {"cal": 32, "p": 2.0, "l": 0.9, "fi": 0.4},
-    "Prise de Masse": {"cal": 37, "p": 2.1, "l": 1.0, "fi": 0.4},
-    "Prise de Masse Pro": {"cal": 42, "p": 2.2, "l": 1.1, "fi": 0.4}
-}
+# Cibles basées sur la vidéo
+if obj_type == "Prise de muscle":
+    c_cal, c_p, c_g, c_l, c_fi = 3168, 158, 456, 79, 35
+elif obj_type == "Perte de graisse":
+    c_cal, c_p, c_g, c_l, c_fi = 2405, 174, 286, 63, 35
+else:
+    c_cal, c_p, c_g, c_l, c_fi = 2829, 126, 404, 79, 35
 
-m = multiplicateurs[objectif]
-c_cal = int(poids * m['cal'])
-c_p, c_l, c_fi = int(poids * m['p']), int(poids * m['l']), int(poids * m['fi'])
-c_g = int((c_cal - (c_p * 4) - (c_l * 9)) / 4)
+# --- INTERFACE PRINCIPALE ---
+st.markdown(f"<h3 style='text-align:center;'>NutriTrack <span style='font-size:0.8rem; color:orange;'>💪 {obj_type}</span></h3>", unsafe_allow_html=True)
 
-# --- DASHBOARD VISUEL ---
-df_jour = st.session_state.historique_repas[st.session_state.historique_repas['Date'] == date.today()]
-tot_c, tot_p, tot_g, tot_l, tot_f = df_jour['Calories'].sum(), df_jour['P'].sum(), df_jour['G'].sum(), df_jour['L'].sum(), df_jour['Fi'].sum()
+# Données du jour
+df_jour = st.session_state.db[st.session_state.db['Date'] == date.today()]
+t_cal, t_p, t_g, t_l, t_f = df_jour['Cal'].sum(), df_jour['P'].sum(), df_jour['G'].sum(), df_jour['L'].sum(), df_jour['Fi'].sum()
 
-# Anneau de Calories central
+# Dashboard Circulaire (Inspiré de la vidéo)
 fig = go.Figure(go.Pie(
-    values=[tot_c, max(0, c_cal - tot_c)], hole=.85,
-    marker_colors=['#2DCC70', '#E5E5EA'], showlegend=False, hoverinfo='none'
+    values=[t_cal, max(0, c_cal - t_cal)], hole=.8,
+    marker_colors=['#FF9500', '#E5E5EA'], showlegend=False, textinfo='none'
 ))
 fig.update_layout(
-    annotations=[dict(text=f'<b>{int(tot_c)}</b><br><span style="font-size:12px; color:gray;">kcal / {c_cal}</span>', 
-                 x=0.5, y=0.5, font_size=28, showarrow=False)],
-    margin=dict(t=10, b=10, l=10, r=10), height=220
+    annotations=[dict(text=f"<b>{int(c_cal - t_cal)}</b><br><span style='font-size:12px; color:gray;'>kcal restantes</span>", x=0.5, y=0.5, font_size=24, showarrow=False)],
+    margin=dict(t=0, b=0, l=0, r=0), height=200, paper_bgcolor='rgba(0,0,0,0)'
 )
 st.plotly_chart(fig, use_container_width=True)
 
-# Grille des Macronutriments (Design Cards)
-col1, col2 = st.columns(2)
-col3, col4 = st.columns(2)
+# Macros Horizontal Bars
+def macro_row(label, val, target, color):
+    col1, col2 = st.columns([1, 4])
+    col1.markdown(f"<small>{label}</small>", unsafe_allow_html=True)
+    col2.progress(min(val/target, 1.0))
+    st.markdown(f"<p style='text-align:right; font-size:0.7rem; margin-top:-15px;'>{int(val)}/{target}g</p>", unsafe_allow_html=True)
 
-def draw_card(col, label, current, target, unit="g"):
-    percent = min(current/target, 1.0) if target > 0 else 0
-    with col:
-        st.markdown(f"""
-        <div class="macro-container">
-            <div class="stat-label">{label.upper()}</div>
-            <div class="stat-value">{int(current)}{unit} <span style="font-size:0.7rem; color:gray;">/ {target}{unit}</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-        st.progress(percent)
-
-draw_card(col1, "Protéines 🥩", tot_p, c_p)
-draw_card(col2, "Glucides 🍝", tot_g, c_g)
-draw_card(col3, "Lipides 🥑", tot_l, c_l)
-draw_card(col4, "Fibres 🥬", tot_f, c_fi)
+macro_row("Prot", t_p, c_p, "orange")
+macro_row("Gluc", t_g, c_g, "blue")
+macro_row("Lip", t_l, c_l, "red")
 
 st.markdown("---")
 
-# --- ACTIONS ---
-tab_add, tab_history = st.tabs(["➕ Ajouter", "📜 Journal"])
+# --- AJOUT DE REPAS ---
+with st.expander("➕ Ajouter un aliment (Magic Scan)"):
+    repas_cat = st.selectbox("Repas", ["Petit-déjeuner", "Déjeuner", "Dîner", "Collation"])
+    magic_input = st.text_input("Nom | Cal | P | G | L | Fi")
+    if st.button("Enregistrer"):
+        try:
+            p = [x.strip() for x in magic_input.split("|")]
+            new_data = pd.DataFrame([{"Date": date.today(), "Repas": repas_cat, "Nom": p[0], "Cal": float(p[1]), "P": float(p[2]), "G": float(p[3]), "L": float(p[4]), "Fi": float(p[5])}])
+            st.session_state.db = pd.concat([st.session_state.db, new_data], ignore_index=True)
+            st.rerun()
+        except:
+            st.error("Format : Poulet | 200 | 30 | 0 | 5 | 0")
 
-with tab_add:
-    st.markdown("### 🪄 Magic Scan Gemini")
-    magic = st.text_input("", placeholder="Aliment | Cal | P | G | L | Fibres")
-    if st.button("Synchroniser le repas"):
-        if magic:
-            try:
-                p = [i.strip() for i in magic.split("|")]
-                new_row = pd.DataFrame([{"Date": date.today(), "Aliment": p[0], "Calories": float(p[1]), "P": float(p[2]), "G": float(p[3]), "L": float(p[4]), "Fi": float(p[5])}])
-                st.session_state.historique_repas = pd.concat([st.session_state.historique_repas, new_row], ignore_index=True)
-                st.success("C'est dans la boîte !")
-                st.rerun()
-            except:
-                st.error("Format requis : Nom | Cal | P | G | L | Fi")
-
-with tab_history:
-    if df_jour.empty:
-        st.info("Aucun repas aujourd'hui.")
-    for i, row in df_jour.iterrows():
+# --- LISTE DES REPAS (Design Vidéo) ---
+for cat, icon in zip(["Petit-déjeuner", "Déjeuner", "Dîner", "Collation"], ["🌆", "☀️", "🌙", "🍎"]):
+    st.markdown(f"#### {icon} {cat}")
+    items = df_jour[df_jour['Repas'] == cat]
+    if items.empty:
+        st.markdown("<p style='color:gray; font-size:0.8rem;'>Aucun aliment ajouté</p>", unsafe_allow_html=True)
+    for _, row in items.iterrows():
         st.markdown(f"""
-        <div style="background:white; border-radius:15px; padding:15px; margin-bottom:10px; border-left: 4px solid #2DCC70;">
-            <b>{row['Aliment']}</b> <span style="float:right; color:#2DCC70;">{int(row['Calories'])} kcal</span><br>
-            <small style="color:gray;">P: {row['P']}g · G: {row['G']}g · L: {row['L']}g · F: {row['Fi']}g</small>
+        <div class="meal-card">
+            <span style="float:right; color:#FF9500; font-weight:bold;">{int(row['Cal'])} kcal</span>
+            <b>{row['Nom']}</b><br>
+            <span class="macro-tag">P: {row['P']}g</span>
+            <span class="macro-tag">G: {row['G']}g</span>
+            <span class="macro-tag">L: {row['L']}g</span>
         </div>
         """, unsafe_allow_html=True)
+
+# Barre de navigation fictive (pour le design)
+st.markdown("""
+    <div class="nav-bar">
+        <span style="color:#FF9500;">🏠<br><small>Accueil</small></span>
+        <span style="color:gray;">🎯<br><small>Objectifs</small></span>
+        <span style="color:gray;">📊<br><small>Stats</small></span>
+        <span style="color:gray;">👤<br><small>Profil</small></span>
+    </div>
+    <br><br>
+    """, unsafe_allow_html=True)
